@@ -188,10 +188,14 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
                     masked_lm_weights, next_sentence_example_loss,
                     next_sentence_log_probs, next_sentence_labels):
         """Computes the loss and accuracy of the model."""
+        
+        #masked_lm_log_probs   shape[(batchsize*max_predictions_per_seq)*output_labels_size]
+        
         masked_lm_log_probs = tf.reshape(masked_lm_log_probs,
                                          [-1, masked_lm_log_probs.shape[-1]])
         masked_lm_predictions = tf.argmax(
             masked_lm_log_probs, axis=-1, output_type=tf.int32)
+        
         masked_lm_example_loss = tf.reshape(masked_lm_example_loss, [-1])
         masked_lm_ids = tf.reshape(masked_lm_ids, [-1])
         masked_lm_weights = tf.reshape(masked_lm_weights, [-1])
@@ -239,8 +243,10 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
 def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
                          label_ids, label_weights):
+  #优化指定位置
   """Get loss and log probs for the masked LM."""
   input_tensor = gather_indexes(input_tensor, positions)
+  #input_tensor shape: (batchsize*max_predictions_per_seq)*embedding_dims
 
   with tf.variable_scope("cls/predictions"):
     # We apply one more non-linear transformation before the output layer.
@@ -260,6 +266,7 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
         "output_bias",
         shape=[bert_config.vocab_size],
         initializer=tf.zeros_initializer())
+    #out_put_weights shape=[vocab_size, embedding_size]
     logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
     logits = tf.nn.bias_add(logits, output_bias)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
@@ -274,6 +281,8 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
     # short to have the maximum number of predictions). The `label_weights`
     # tensor has a value of 1.0 for every real prediction and 0.0 for the
     # padding predictions.
+    
+    #log_probs shape[(batchsize*max_predictions_per_seq)*output_labels_size]
     per_example_loss = -tf.reduce_sum(log_probs * one_hot_labels, axis=[-1])
     numerator = tf.reduce_sum(label_weights * per_example_loss)
     denominator = tf.reduce_sum(label_weights) + 1e-5
